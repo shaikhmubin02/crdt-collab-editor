@@ -3,3 +3,11 @@
 .next/
 dist/
 coverage/
+
+# Local-only: build prompts are not part of the repo
+BUILD_PROMPT.md
+*PROMPT*.md
+prompts/
+
+# Downloaded editing traces (fetched by bench/fetch-traces.sh)
+bench/traces/
