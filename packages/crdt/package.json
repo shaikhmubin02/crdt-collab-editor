@@ -1,0 +1,26 @@
+{
+  "name": "@collab/crdt",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zero-dependency RGA sequence CRDT for collaborative text editing.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.4"
+  }
+}
