@@ -17,10 +17,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "^26.6.5",
+    "fast-check": "^4.10.2",
     "vitest": "^5.0.4"
   }
 }

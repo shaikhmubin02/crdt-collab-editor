@@ -20,6 +20,10 @@ export default tseslint.config(
     },
   },
   {
+    files: ['**/test/**/*.ts', '**/*.test.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
     files: ['**/*.js', '**/*.mjs'],
     extends: [tseslint.configs.disableTypeChecked],
   },

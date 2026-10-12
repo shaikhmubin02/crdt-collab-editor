@@ -20,3 +20,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          FC_NUM_RUNS: 10000
