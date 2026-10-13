@@ -358,6 +358,38 @@ when `DATABASE_URL` is set, two clients over real WebSockets, and an IndexedDB i
 6. A third client opening fresh sees the merged text.
 7. Both outboxes are empty on disk.
 
+## 8. Scale-out
+
+Several stateless server instances can serve the same document. There is no sticky routing and
+no document ownership:
+
+- **Postgres is the source of truth.** Every instance appends its clients' ops (idempotently,
+  under the per-document append lock of §5).
+- **Redis pub/sub is the fast path.** After committing, an instance publishes the batch on
+  `collab:doc:<id>`. Other instances hosting the document integrate it into their room's `Doc`
+  and forward it to their clients. They don't persist it again; it is already durable.
+- **Storage catch-up is the reliable path.** Pub/sub is at-most-once: a subscriber that
+  reconnects misses messages. Each room therefore also polls `ops WHERE id > cursor` every 2 s. By
+  the commit-order invariant the cursor is exact: no op can later commit below it. Duplicates from
+  the two paths are no-ops. A test drops 100% of fan-out messages and still converges.
+- **Subscribe, then load.** A room subscribes before reading storage, so ops committed in between
+  arrive by one path or the other.
+- **Presence across instances.**
+  - A newly opened room publishes `who`, and other instances re-announce their users.
+  - Remote users appear in welcomes.
+  - Remote presence expires unless it is re-announced every 15 s (expiry at 45 s), because a
+    crashed instance never sends `leave`.
+
+Why not route each document to one owner instance (consistent hashing)? That gives cheaper
+fan-out and no cross-instance presence, but needs a routing layer and handoff on rebalancing.
+Since the CRDT makes multi-writer safe, any-instance routing behind a plain load balancer is the
+simpler operational choice at this scale. Ownership would be the next step if a single hot
+document's fan-out dominated.
+
+Load-test results are in the README. On one laptop, 100 concurrent editors on one document split
+across two instances measured p99 166 ms end to end, and Postgres commit latency is the first
+server-side limit.
+
 ## References
 
 - Lamport, L. (1978). Time, clocks, and the ordering of events in a distributed system.

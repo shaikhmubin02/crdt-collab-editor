@@ -3,9 +3,10 @@
 A real-time collaborative text editor built on a **custom sequence CRDT** in TypeScript, with
 a Node.js WebSocket sync server, offline editing, and PostgreSQL persistence.
 
-> Status: milestones 1–7 are done: the CRDT core, convergence testing, performance work, the
-> sync server, Postgres persistence with snapshots, offline editing, and the web UI. Scale-out
-> (Redis, k6 load tests, AWS deployment docs) is in progress.
+> All eight milestones are implemented, tested and measured: the CRDT core, convergence testing,
+> performance work, the sync server, Postgres persistence with snapshots, offline editing, the web
+> UI, and multi-instance scale-out. AWS deployment is documented in [docs/DEPLOY.md](docs/DEPLOY.md)
+> but has not been carried out.
 
 ![Two users editing: a remote caret and selection, presence, sync status](docs/screenshot.png)
 
@@ -121,9 +122,40 @@ from Postgres 17 (Docker, same machine) and materializing the `Doc`. Each run ta
 - **Incremental compaction:** 151 ms per 1,000 ops.
 - **Appending the trace** in 500-op batches ran at 11–17K ops/s.
 
-### Not measured yet
+### Concurrent editors and p99 propagation latency (milestone 8)
 
-- p50/p99 op propagation latency and concurrent editors per document (k6, milestone 8)
+`docker compose up -d postgres redis && node bench/scale.bench.ts`. This measures N concurrent
+editors on **one document**:
+
+- **Setup:** VUs round-robin across **two server instances** sharing Postgres and Redis, so half
+  of all deliveries cross instances. Each editor types 5 chars/s, and the steady state runs for
+  60 s after a 5 s warm-up.
+- **End-to-end (k6):** sender send → server → Postgres commit → (Redis → other instance) →
+  receiver. Every op is delivered to every other editor.
+- **Server-side:** op received → durably committed → queued to every recipient. Taken from the
+  instances' own histograms, so it is independent of how fast the load generator reads.
+
+| Editors | Ops sent | Deliveries | End-to-end p50 / p99 | Server p50 / p99 | Commit p99 | Server CPU (each) |
+| ------- | -------- | ---------- | -------------------- | ---------------- | ---------- | ----------------- |
+| 10      | 3,230    | 29K        | 20 / 33 ms           | 16 / 35 ms       | 24 ms      | 3%                |
+| 50      | 16,150   | 791K       | 42 / 71 ms           | 28 / 50 ms       | 43 ms      | 6–7%              |
+| 100     | 32,028   | 3.2M       | 79 / 166 ms          | 60 / 183 ms      | 96 ms      | 16–17%            |
+| 200     | 27,693\* | 5.5M       | 455 / 2,768 ms\*     | 96 / 451 ms      | 239 ms     | 22%               |
+
+No slow-consumer disconnects occurred in any run.
+
+**How to read this honestly.** Everything (k6, both servers, Postgres, Redis, the Docker VM) runs
+on the same 2-core laptop:
+
+- **At 200 editors the load generator is the bottleneck.** k6 managed only 43% of the scheduled
+  sends (\*), and its event-loop delay inflates its end-to-end numbers.
+- **The server-side p99 at 200 (451 ms) is driven by Postgres commit latency.** Commits run on
+  Docker Desktop's virtualized disk, and group commit is already batching them.
+- **An earlier version of the k6 script parsed every frame in full.** It used about 175% CPU at
+  100 editors, against roughly 21% per server, which made its latencies meaningless; only the
+  fixed script's numbers are reported.
+- **Not measured:** many documents at once, separate load-generator machines, and real network
+  latency.
 
 ## Development
 
@@ -136,6 +168,7 @@ bench/fetch-traces.sh && node --expose-gc bench/crdt.bench.ts
 
 ## Limitations
 
+- No authentication: any client can open any document (see docs/DEPLOY.md §7).
 - Text typed backwards, concurrently at the same position, can interleave (RGA; see DESIGN §3).
 - Tombstones are never garbage-collected (DESIGN §4).
 - Elements are UTF-16 code units. The editor never splits a surrogate pair, but concurrent edits

@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-13T01:02:51.939Z",
+  "machine": {
+    "cpu": "11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+    "logicalCores": 4,
+    "memoryGiB": 7.8,
+    "os": "Windows_NT 10.0.26300",
+    "node": "v26.8.1"
+  },
+  "durationS": 60,
+  "cps": 5,
+  "results": [
+    {
+      "editors": 10,
+      "instances": 2,
+      "cps": 5,
+      "durationS": 60,
+      "opsSent": 3230,
+      "opsReceived": 29070,
+      "deliveriesMeasured": 26910,
+      "propagationMs": {
+        "p50": 20,
+        "p90": 25,
+        "p95": 27,
+        "p99": 33,
+        "max": 40
+      },
+      "connectedRate": 1,
+      "serverLatencyMs": {
+        "p50": 16.4,
+        "p99": 34.5,
+        "samples": 3230
+      },
+      "persistMs": {
+        "p50": 8.2,
+        "p99": 24.4,
+        "batches": 1297
+      },
+      "serverCpuPercent": [3, 3],
+      "slowConsumerDisconnects": 0
+    },
+    {
+      "editors": 50,
+      "instances": 2,
+      "cps": 5,
+      "durationS": 60,
+      "opsSent": 16150,
+      "opsReceived": 791350,
+      "deliveriesMeasured": 731300,
+      "propagationMs": {
+        "p50": 42,
+        "p90": 56,
+        "p95": 60,
+        "p99": 71,
+        "max": 124
+      },
+      "connectedRate": 1,
+      "serverLatencyMs": {
+        "p50": 27.8,
+        "p99": 50,
+        "samples": 16150
+      },
+      "persistMs": {
+        "p50": 15.9,
+        "p99": 43.3,
+        "batches": 1309
+      },
+      "serverCpuPercent": [6, 7],
+      "slowConsumerDisconnects": 0
+    },
+    {
+      "editors": 100,
+      "instances": 2,
+      "cps": 5,
+      "durationS": 60,
+      "opsSent": 32028,
+      "opsReceived": 3170772,
+      "deliveriesMeasured": 2932622,
+      "propagationMs": {
+        "p50": 79,
+        "p90": 115,
+        "p95": 126,
+        "p99": 166,
+        "max": 299
+      },
+      "connectedRate": 1,
+      "serverLatencyMs": {
+        "p50": 60.2,
+        "p99": 183.1,
+        "samples": 32028
+      },
+      "persistMs": {
+        "p50": 35.5,
+        "p99": 96.1,
+        "batches": 2797
+      },
+      "serverCpuPercent": [16, 17],
+      "slowConsumerDisconnects": 0
+    },
+    {
+      "editors": 200,
+      "instances": 2,
+      "cps": 5,
+      "durationS": 60,
+      "opsSent": 27693,
+      "opsReceived": 5510907,
+      "deliveriesMeasured": 4687918,
+      "propagationMs": {
+        "p50": 455,
+        "p90": 1342,
+        "p95": 1755,
+        "p99": 2768,
+        "max": 6331
+      },
+      "connectedRate": 1,
+      "serverLatencyMs": {
+        "p50": 95.6,
+        "p99": 451,
+        "samples": 27693
+      },
+      "persistMs": {
+        "p50": 52.1,
+        "p99": 239.4,
+        "batches": 2003
+      },
+      "serverCpuPercent": [22, 22],
+      "slowConsumerDisconnects": 0
+    }
+  ]
+}

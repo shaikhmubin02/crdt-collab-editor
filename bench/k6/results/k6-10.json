@@ -1,0 +1,17 @@
+{
+  "editors": 10,
+  "instances": 2,
+  "cps": 5,
+  "durationS": 60,
+  "opsSent": 3230,
+  "opsReceived": 29070,
+  "deliveriesMeasured": 26910,
+  "propagationMs": {
+    "p50": 20,
+    "p90": 25,
+    "p95": 27,
+    "p99": 33,
+    "max": 40
+  },
+  "connectedRate": 1
+}

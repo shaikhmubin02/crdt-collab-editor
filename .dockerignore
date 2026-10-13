@@ -1,0 +1,8 @@
+.git
+**/node_modules
+**/.next
+bench/traces
+bench/results
+test-results
+docs/INTERVIEW_NOTES.md
+BUILD_PROMPT.md

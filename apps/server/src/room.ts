@@ -30,6 +30,8 @@ interface PendingWrite {
   readonly ops: readonly Op[];
   readonly from: Connection | null;
   readonly trace: number | undefined;
+  /** performance.now() when the ops were received, for the server-side latency histogram. */
+  readonly receivedAt: number;
 }
 
 const APPEND_RETRY_DELAYS_MS = [50, 200, 500, 1000, 2000, 4000];
@@ -168,7 +170,7 @@ export class Room {
     const integrated = this.doc.applyAll(ops);
     // Queue even an empty write, so the sender is acked (e.g. a resend of ops we already have)
     // after everything before it is durable.
-    this.#writes.push({ ops: integrated, from: conn, trace });
+    this.#writes.push({ ops: integrated, from: conn, trace, receivedAt: performance.now() });
     this.#scheduleFlush();
   }
 
@@ -244,6 +246,12 @@ export class Room {
         this.#markPersisted(ops);
       }
 
+      // Receive -> durable -> handed to every connection's queue: the server's share of
+      // propagation latency, independent of how fast clients (or a load generator) read.
+      const handedOff = performance.now();
+      for (const w of batch) {
+        if (w.ops.length > 0) metrics.observe('sync_server_latency_ms', handedOff - w.receivedAt);
+      }
       const traces = batch.flatMap((w) => (w.trace === undefined ? [] : [w.trace]));
       this.#broadcast(ops, (c) =>
         batch.filter((w) => w.from !== c && w.trace !== undefined).map((w) => w.trace ?? 0),
@@ -361,7 +369,12 @@ export class Room {
         // Ops of ours that were buffered here and just got unblocked still need persisting.
         const ours = integrated.filter((op) => !fromPeer.has(opKey(op)));
         if (ours.length > 0) {
-          this.#writes.push({ ops: ours, from: null, trace: undefined });
+          this.#writes.push({
+            ops: ours,
+            from: null,
+            trace: undefined,
+            receivedAt: performance.now(),
+          });
           this.#scheduleFlush();
         }
         break;
