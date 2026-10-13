@@ -11,3 +11,6 @@ prompts/
 
 # Downloaded editing traces (fetched by bench/fetch-traces.sh)
 bench/traces/
+*.tsbuildinfo
+test-results/
+playwright-report/

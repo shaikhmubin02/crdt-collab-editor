@@ -3,9 +3,11 @@
 A real-time collaborative text editor built on a **custom sequence CRDT** in TypeScript, with
 a Node.js WebSocket sync server, offline editing, and PostgreSQL persistence.
 
-> Status: in development. Milestones 1–5 are done: the CRDT core, convergence testing,
-> performance work, the sync server, and Postgres persistence with snapshots. The offline client,
-> web UI and scale-out are in progress.
+> Status: milestones 1–7 are done: the CRDT core, convergence testing, performance work, the
+> sync server, Postgres persistence with snapshots, offline editing, and the web UI. Scale-out
+> (Redis, k6 load tests, AWS deployment docs) is in progress.
+
+![Two users editing: a remote caret and selection, presence, sync status](docs/screenshot.png)
 
 ## Goals
 

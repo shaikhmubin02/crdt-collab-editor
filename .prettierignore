@@ -2,3 +2,6 @@ pnpm-lock.yaml
 dist
 coverage
 .next
+next-env.d.ts
+test-results
+playwright-report
