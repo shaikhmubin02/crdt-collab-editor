@@ -4,6 +4,9 @@
   "private": true,
   "description": "WebSocket sync server: rooms, presence, backpressure, Postgres op log + snapshots, Redis fan-out.",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "start": "node src/main.ts",
     "dev": "node --watch src/main.ts",

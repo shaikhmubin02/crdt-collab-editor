@@ -321,6 +321,43 @@ Not guaranteed: anything about clients that never reconnect (their unsynced ops 
 device), or authentication. Any client may open any document, and a connection may upload ops only
 for replica IDs it declared, which prevents accidents, not malice.
 
+## 7. Offline client
+
+`packages/client` (`SyncClient`) is framework-agnostic; the web app is a thin view over it.
+
+- **Local-first editing.** An edit is applied to the in-memory `Doc` immediately. It is then
+  appended to an IndexedDB **outbox** and, if connected, sent. The UI never waits on the network.
+- **What is durable on the device:**
+  - the outbox: every unacknowledged local op, written on every edit;
+  - a document snapshot, written debounced (at most one per second).
+
+  Recovery after a crash or reload is _snapshot + outbox_. Every local op is in one of the two or
+  has been acked, and remote ops missing from an older snapshot are re-fetched by version vector.
+
+- **A fresh replica ID per session, never resumed.** Resuming an ID after a crash risks reissuing
+  a `seq` the server already holds from before the crash, which would silently corrupt the
+  version vectors. Ops from earlier sessions keep their old IDs. The client declares those IDs
+  in `hello.owns`, so the server accepts them from this connection. A side benefit: two tabs on
+  one document are just two replicas. Their outbox keys `[doc, replica, seq]` never collide, and
+  no cross-tab locking is needed. The cost is one version-vector entry per session.
+- **Reconnect** uses exponential backoff with full jitter, so a server restart doesn't trigger a
+  thundering herd. Then comes the two-way version-vector diff of §6. A client with an empty
+  version vector adopts the server's snapshot wholesale, which makes first loads fast.
+- **Storage failures** (quota, private browsing) are logged and editing continues. The session
+  still syncs; only crash-safety is lost.
+
+The end-to-end test (`packages/client/test/offline.e2e.test.ts`) runs a real server, with Postgres
+when `DATABASE_URL` is set, two clients over real WebSockets, and an IndexedDB implementation per
+"browser":
+
+1. Both clients sync, then the server is stopped.
+2. Both clients edit offline.
+3. One client reloads its page while still offline and keeps editing under a new replica ID.
+4. The server restarts from storage on the same port.
+5. Both clients reconnect by themselves and converge.
+6. A third client opening fresh sees the merged text.
+7. Both outboxes are empty on disk.
+
 ## References
 
 - Lamport, L. (1978). Time, clocks, and the ordering of events in a distributed system.

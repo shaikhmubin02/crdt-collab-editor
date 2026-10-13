@@ -1,0 +1,27 @@
+{
+  "name": "@collab/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic sync client: CRDT replica, WebSocket sync, IndexedDB offline outbox.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@collab/crdt": "workspace:*",
+    "@collab/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@collab/server": "workspace:*",
+    "@types/node": "^26.6.5",
+    "fake-indexeddb": "^6.2.5",
+    "vitest": "^5.0.4"
+  }
+}
