@@ -231,13 +231,95 @@ Both trade a rare, user-visible failure mode for bounded growth. At the measured
 bytes per character ever typed, a 1M-keystroke document stays in the tens of megabytes, so this
 project accepts unbounded tombstones and documents the trade-off.
 
-## 5. Snapshots
+## 5. Persistence and snapshots
 
-_Milestone 5._
+### Storage model
+
+Postgres holds an **append-only op log** (`ops`, one row per op) and **snapshots** (`snapshots`,
+the serialized `DocSnapshot` plus `upto_id`). To load a document, read the latest snapshot, then
+the ops with `id > upto_id`.
+
+- **Characters are stored as integer UTF-16 code units, not `text`.** An element can be one half
+  of a surrogate pair (emoji are two elements). A lone surrogate is not valid UTF-8, and node-pg
+  would silently turn it into U+FFFD. Snapshot JSON is safe because `JSON.stringify` escapes lone
+  surrogates (`"\ud83d"`). The same holds for WebSocket frames, which are always JSON.
+- **Appends are idempotent:** `UNIQUE (doc_id, replica, seq)` with `ON CONFLICT DO NOTHING`. A
+  client resending after a lost ack, or two instances racing, can't duplicate an op.
+
+### The invariant that makes "snapshot + ops after it" correct
+
+**Per document, ops commit in id order.** Each append transaction takes
+`pg_advisory_xact_lock(hash(doc))` before allocating ids. Without the lock, transaction T1 could
+hold id 100 while T2 holds 101 and commits first; a snapshot taken in between would record
+`upto_id = 101` and op 100 would never be loaded again. With the lock, every MVCC snapshot sees a
+prefix of the document's log, so:
+
+- **Compaction runs in a REPEATABLE READ transaction without the append lock.** It reads a
+  consistent prefix and never blocks writers. Concurrent compactions of one document (two server
+  instances) are serialized by a second, try-lock; the loser skips. The race test found this: two
+  compactions deleting the same old snapshot rows hit a serialization failure.
+- **Snapshots are built from the database, never from a server's in-memory `Doc`.** With several
+  instances, any one room may lag ops persisted elsewhere; its state could not honestly claim an
+  `upto_id`.
+- **A snapshot is refused if any stored op fails to integrate.** The snapshot would claim to cover
+  that op by position without containing it.
+
+### Cadence
+
+A snapshot is taken every `SNAPSHOT_EVERY = 1000` persisted ops per document, and when an idle
+room is unloaded. Measured on `automerge-paper` (260K ops, local Postgres 17 in Docker, two runs;
+see the README):
+
+| Load path               | Time                                   |
+| ----------------------- | -------------------------------------- |
+| Full log replay         | 2.46–2.82 s                            |
+| Snapshot + 0-op tail    | 39–41 ms                               |
+| Snapshot + 1000-op tail | 65–82 ms                               |
+| Incremental compaction  | 151 ms per 1000 ops (off the hot path) |
+
+The cadence bounds the worst-case load at "parse one snapshot + replay 999 ops", which is tens of
+milliseconds. Compaction costs about 0.15 ms per op amortized, and runs in the background after a
+group commit. Snapshotting more often would barely change load time but would rewrite the ~0.8 MB
+snapshot more often. Much less often, and the tail replay starts to dominate loads. Two snapshots
+are kept per document. The op log itself is kept in full: it is the audit trail, and pruning it
+is a later optimization, since snapshots already contain full history.
 
 ## 6. Server delivery guarantees
 
-_Milestone 4._
+The server is a relay plus durable store. Correctness of the merged document never depends on it:
+the CRDT converges under any delivery order. What the server does guarantee:
+
+1. **Durable acknowledgement.** An `ack {vv}` is sent only after the acknowledged ops are
+   committed to Postgres. Clients keep unacked ops in their outbox and resend them on reconnect;
+   resends are deduplicated by the server `Doc` and by the unique constraint.
+2. **Persist-before-broadcast.** Other clients receive an op only after it is durable. If the
+   server crashes, no client can hold an op the server has lost.
+3. **Exact catch-up.** On connect, the client sends its version vector; the server replies with
+   exactly `opsSince(vv)` (or a snapshot, if the client is empty). The client then uploads
+   `opsSince(serverVv)`. Because version vectors over contiguous `seq`s are exact, after both
+   steps each side has everything the other had.
+4. **Causal, at-least-once delivery while connected.** Ops are integrated before they are
+   broadcast, so the stream a client receives is in an order that integrates without buffering.
+   An op may arrive twice (for example after a reconnect); it is then a no-op.
+5. **Isolation from slow clients.** Each connection has its own queue, written only while the
+   socket's buffered bytes are under a high-water mark, so a slow reader costs bounded memory and
+   never delays other clients. A client is disconnected (close code 4008) when either:
+   - its backlog exceeds a cap, or
+   - its socket makes **no write progress** for a configured number of timer ticks.
+
+   Disconnecting is safe because of (3): the client reconnects and receives exactly what it
+   missed. Two details came from the backpressure test:
+   - "Backlog non-empty for N ms" wrongly kills a healthy client draining a large burst, so the
+     rule is "no progress".
+   - Progress is counted in ticks, not wall-clock time, so the server's own event-loop pauses are
+     never blamed on clients.
+
+6. **Best-effort presence.** Cursors and the user list are latest-wins per peer, coalesced, and
+   sent only when the reliable queue is empty. Losing a presence update is harmless.
+
+Not guaranteed: anything about clients that never reconnect (their unsynced ops are lost with the
+device), or authentication. Any client may open any document, and a connection may upload ops only
+for replica IDs it declared, which prevents accidents, not malice.
 
 ## References
 

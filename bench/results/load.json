@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-13T00:23:09.424Z",
+  "machine": {
+    "cpu": "11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+    "logicalCores": 4,
+    "memoryGiB": 7.8,
+    "os": "Windows_NT 10.0.26300",
+    "node": "v26.8.1"
+  },
+  "trace": "automerge-paper",
+  "results": {
+    "append (batches of 500)": {
+      "ops": 259778,
+      "ms": 15027,
+      "opsPerSec": 17287
+    },
+    "load: full log replay": {
+      "ops": 259778,
+      "readMs": 1360.2,
+      "materializeMs": 1455.9,
+      "totalMs": 2816,
+      "tail": 259778,
+      "minTotalMs": 2567,
+      "maxTotalMs": 3039
+    },
+    "load: snapshot + 0-op tail": {
+      "readMs": 32.6,
+      "materializeMs": 6.2,
+      "totalMs": 38.8,
+      "tail": 0,
+      "minTotalMs": 33,
+      "maxTotalMs": 61,
+      "snapshotJsonBytes": 792414,
+      "firstSnapshotMs": 2392
+    },
+    "load: snapshot + 1000-op tail": {
+      "readMs": 62.2,
+      "materializeMs": 19.5,
+      "totalMs": 81.7,
+      "tail": 1000,
+      "minTotalMs": 58,
+      "maxTotalMs": 146,
+      "snapshotJsonBytes": 788438,
+      "firstSnapshotMs": 3208
+    },
+    "compaction: incremental (1000 new ops)": {
+      "ms": 151,
+      "replayed": 1000
+    }
+  }
+}

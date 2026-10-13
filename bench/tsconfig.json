@@ -4,5 +4,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": [".", "../packages/crdt/src", "../packages/crdt/test/reference"]
+  "include": [".", "../packages/crdt/src", "../packages/crdt/test/reference", "../apps/server/src"]
 }

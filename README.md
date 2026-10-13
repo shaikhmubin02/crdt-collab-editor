@@ -3,8 +3,9 @@
 A real-time collaborative text editor built on a **custom sequence CRDT** in TypeScript, with
 a Node.js WebSocket sync server, offline editing, and PostgreSQL persistence.
 
-> Status: in development. Milestones 1–3 are done: the CRDT core, convergence testing, and
-> performance work. The server, persistence, offline client, web UI and scale-out are in progress.
+> Status: in development. Milestones 1–5 are done: the CRDT core, convergence testing,
+> performance work, the sync server, and Postgres persistence with snapshots. The offline client,
+> web UI and scale-out are in progress.
 
 ## Goals
 
@@ -102,10 +103,25 @@ Memory is the heap retained by the document after a full GC. It was identical ac
 | …per visible char                     | 468 B    | 45 B      |           |
 | `seph-blog1`: per inserted char       | 289 B    | 36 B      | 7.9×      |
 
+### Document load time with vs. without snapshots (milestone 5)
+
+`DATABASE_URL=... node bench/load.bench.ts`. This measures loading `automerge-paper` (260K ops)
+from Postgres 17 (Docker, same machine) and materializing the `Doc`. Each run takes the median of
+5 loads, and the table gives the range across 2 runs. Every load checks the final text.
+
+| Load path                                                  | Time        | Speed-up |
+| ---------------------------------------------------------- | ----------- | -------- |
+| Full op-log replay (no snapshot)                           | 2.46–2.82 s | 1×       |
+| Latest snapshot + 0-op tail                                | 39–41 ms    | ~60–70×  |
+| Latest snapshot + 1000-op tail (worst case at the cadence) | 65–82 ms    | ~34–38×  |
+
+- **Snapshot size:** 0.79 MB of JSON, containing the full history.
+- **Incremental compaction:** 151 ms per 1,000 ops.
+- **Appending the trace** in 500-op batches ran at 11–17K ops/s.
+
 ### Not measured yet
 
 - p50/p99 op propagation latency and concurrent editors per document (k6, milestone 8)
-- Document load time with vs. without snapshots (milestone 5)
 
 ## Development
 
