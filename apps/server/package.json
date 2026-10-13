@@ -1,0 +1,26 @@
+{
+  "name": "@collab/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WebSocket sync server: rooms, presence, backpressure, Postgres op log + snapshots, Redis fan-out.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@collab/crdt": "workspace:*",
+    "@collab/protocol": "workspace:*",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
+    "vitest": "^5.0.4"
+  }
+}

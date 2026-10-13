@@ -8,6 +8,21 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: collab
+          POSTGRES_PASSWORD: collab
+          POSTGRES_DB: collab
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U collab" --health-interval 2s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-retries 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,3 +37,5 @@ jobs:
       - run: pnpm test
         env:
           FC_NUM_RUNS: 10000
+          DATABASE_URL: postgres://collab:collab@localhost:5432/collab
+          REDIS_URL: redis://localhost:6379

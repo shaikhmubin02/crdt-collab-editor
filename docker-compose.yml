@@ -1,0 +1,43 @@
+# Local development stack: Postgres (op log + snapshots) and Redis (cross-instance fan-out).
+#   docker compose up -d postgres redis      # just the dependencies (host ports 55432 / 56379)
+#   docker compose --profile app up --build  # also two server instances behind the web app
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: collab
+      POSTGRES_PASSWORD: collab
+      POSTGRES_DB: collab
+    ports: ['${PG_PORT:-55432}:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U collab']
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ['${REDIS_PORT:-56379}:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      retries: 30
+
+  server-a: &server
+    profiles: [app]
+    build: { context: ., dockerfile: apps/server/Dockerfile }
+    environment:
+      DATABASE_URL: postgres://collab:collab@postgres:5432/collab
+      REDIS_URL: redis://redis:6379
+      PORT: '8787'
+    ports: ['8787:8787']
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  server-b:
+    <<: *server
+    ports: ['8788:8787']
+
+volumes:
+  pgdata:
