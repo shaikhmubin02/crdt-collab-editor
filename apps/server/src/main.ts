@@ -41,6 +41,7 @@ const server = await startServer({
   host: env.HOST ?? '0.0.0.0',
   snapshotEvery: int('SNAPSHOT_EVERY', 1000),
   roomIdleMs: int('ROOM_IDLE_MS', 30_000),
+  catchUpMs: fanout ? int('CATCHUP_MS', 2000) : null,
 });
 
 let stopping = false;

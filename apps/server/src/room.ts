@@ -1,5 +1,5 @@
 import { vvGet, type Doc, type Op, type ReplicaId, type VersionVector } from '@collab/crdt';
-import { CloseCode, MAX_OPS_PER_FRAME, type Cursor } from '@collab/protocol';
+import { CloseCode, MAX_OPS_PER_FRAME, type Cursor, type Peer } from '@collab/protocol';
 import type { Connection } from './connection.ts';
 import type { Fanout, FanoutMessage } from './fanout.ts';
 import type { Logger } from './log.ts';
@@ -17,6 +17,11 @@ export interface RoomDeps {
   /** Take a snapshot after this many ops have been appended since the last one. */
   readonly snapshotEvery: number;
   readonly fanout: Fanout | null;
+  /**
+   * Poll storage for ops committed by other instances every this many ms (null: never). Fanout is
+   * at-most-once, so this is what guarantees every instance eventually serves every op.
+   */
+  readonly catchUpMs: number | null;
   /** Called if the room gives up (storage unavailable) so the server can forget it. */
   readonly onFailed: (room: Room) => void;
 }
@@ -28,6 +33,8 @@ interface PendingWrite {
 }
 
 const APPEND_RETRY_DELAYS_MS = [50, 200, 500, 1000, 2000, 4000];
+/** Instances re-announce their users this often; remote presence not refreshed in 3x is dropped. */
+const PRESENCE_REFRESH_MS = 15_000;
 
 /**
  * One document's live session on this server: the authoritative in-memory replica, its clients,
@@ -51,12 +58,38 @@ export class Room {
   #compacting: Promise<void> | null = null;
   #failed = false;
   #unsubscribe: (() => Promise<void>) | null = null;
+  /** Storage log position up to which this room has integrated everything. */
+  #cursor: string;
+  #catchUpTimer: ReturnType<typeof setInterval> | null = null;
+  #catchingUp = false;
+  /** Users connected to other instances, with when we last heard about them. */
+  readonly #remotePeers = new Map<ReplicaId, { peer: Peer; seenAt: number }>();
+  #presenceTimer: ReturnType<typeof setInterval> | null = null;
 
-  private constructor(id: string, doc: Doc, opsSinceSnapshot: number, deps: RoomDeps) {
+  private constructor(
+    id: string,
+    doc: Doc,
+    opsSinceSnapshot: number,
+    cursor: string,
+    deps: RoomDeps,
+  ) {
     this.id = id;
     this.doc = doc;
     this.#deps = deps;
     this.#opsSinceSnapshot = opsSinceSnapshot;
+    this.#cursor = cursor;
+    if (deps.catchUpMs !== null) {
+      this.#catchUpTimer = setInterval(() => {
+        void this.catchUp();
+      }, deps.catchUpMs);
+      this.#catchUpTimer.unref();
+    }
+    if (deps.fanout) {
+      this.#presenceTimer = setInterval(() => {
+        this.#refreshPresence();
+      }, PRESENCE_REFRESH_MS);
+      this.#presenceTimer.unref();
+    }
     for (const [replica, seq] of Object.entries(doc.versionVector()))
       this.#persisted.set(replica, seq);
   }
@@ -75,9 +108,11 @@ export class Room {
       : null;
     const stored = await deps.store.load(id);
     const doc = materialize(stored.snapshot, stored.ops, SERVER_REPLICA);
-    room = new Room(id, doc, stored.ops.length, deps);
+    room = new Room(id, doc, stored.ops.length, stored.cursor, deps);
     room.#unsubscribe = unsubscribe;
     for (const m of early) room.#onFanout(m);
+    // Users who joined on other instances before we subscribed were announced to nobody here.
+    deps.fanout?.publish(id, { kind: 'who' });
     deps.metrics.observe('sync_room_load_ms', performance.now() - started);
     deps.log.log('info', 'room loaded', {
       doc: id,
@@ -98,7 +133,9 @@ export class Room {
       if (other.replica === conn.replica) other.close(CloseCode.Replaced, 'replica reconnected');
     }
     this.clients.add(conn);
-    const peers = [...this.clients].flatMap((c) => (c !== conn && c.peer ? [c.peer] : []));
+    const local = [...this.clients].flatMap((c) => (c !== conn && c.peer ? [c.peer] : []));
+    const remote = [...this.#remotePeers.values()].map((r) => r.peer);
+    const peers = [...local, ...remote.filter((p) => p.replica !== conn.replica)];
     const vv = this.doc.versionVector();
     if (Object.keys(clientVv).length === 0) {
       conn.send({ type: 'welcome', vv, snapshot: this.doc.toSnapshot(), ops: [], peers });
@@ -140,6 +177,30 @@ export class Room {
     this.#announce(conn);
   }
 
+  /**
+   * Integrate ops committed to storage since the last check (by any instance) and forward the
+   * new ones to clients. Repairs anything the fanout dropped; ops we already have are no-ops.
+   */
+  async catchUp(): Promise<void> {
+    if (this.#catchingUp || this.#failed) return;
+    this.#catchingUp = true;
+    try {
+      const page = await this.#deps.store.opsAfter(this.id, this.#cursor);
+      this.#cursor = page.cursor;
+      if (page.ops.length === 0) return;
+      this.#markPersisted(page.ops);
+      const integrated = this.doc.applyAll(page.ops);
+      if (integrated.length > 0) {
+        this.#deps.metrics.inc('sync_catchup_ops_total', integrated.length);
+        this.#broadcast(integrated);
+      }
+    } catch (error) {
+      this.#deps.log.log('warn', 'catch-up failed', { doc: this.id, error: String(error) });
+    } finally {
+      this.#catchingUp = false;
+    }
+  }
+
   /** Wait until every integrated op has been persisted. */
   async drain(): Promise<void> {
     while (this.#flushing) await this.#flushing;
@@ -147,6 +208,8 @@ export class Room {
 
   /** Persist outstanding writes, snapshot if anything changed since the last one, stop relaying. */
   async close(): Promise<void> {
+    this.#stopCatchUp();
+    if (this.#presenceTimer) clearInterval(this.#presenceTimer);
     await this.drain();
     await this.#compacting;
     if (this.#opsSinceSnapshot > 0 && !this.#failed) await this.#compact();
@@ -263,6 +326,8 @@ export class Room {
     for (const conn of this.clients) conn.close(1011, 'storage unavailable');
     this.clients.clear();
     this.#deps.onFailed(this);
+    this.#stopCatchUp();
+    if (this.#presenceTimer) clearInterval(this.#presenceTimer);
     void this.#unsubscribe?.();
   }
 
@@ -302,12 +367,43 @@ export class Room {
         break;
       }
       case 'presence':
+        this.#remotePeers.set(message.peer.replica, { peer: message.peer, seenAt: Date.now() });
         for (const c of this.clients) c.sendPresence(message.peer.replica, message.peer);
         break;
       case 'leave':
+        this.#remotePeers.delete(message.replica);
         for (const c of this.clients) c.sendPresence(message.replica, null);
         break;
+      case 'who':
+        for (const c of this.clients) {
+          const peer = c.peer;
+          if (peer) this.#deps.fanout?.publish(this.id, { kind: 'presence', peer });
+        }
+        break;
     }
+  }
+
+  /**
+   * Re-announce local users and expire remote ones that stopped being announced: an instance that
+   * crashed never sends `leave`, so its users would otherwise linger forever.
+   */
+  #refreshPresence(): void {
+    const { fanout } = this.#deps;
+    for (const c of this.clients) {
+      const peer = c.peer;
+      if (peer) fanout?.publish(this.id, { kind: 'presence', peer });
+    }
+    const cutoff = Date.now() - 3 * PRESENCE_REFRESH_MS;
+    for (const [replica, { seenAt }] of this.#remotePeers) {
+      if (seenAt >= cutoff) continue;
+      this.#remotePeers.delete(replica);
+      for (const c of this.clients) c.sendPresence(replica, null);
+    }
+  }
+
+  #stopCatchUp(): void {
+    if (this.#catchUpTimer) clearInterval(this.#catchUpTimer);
+    this.#catchUpTimer = null;
   }
 
   /** Persisted seq for a replica (test/diagnostic helper). */

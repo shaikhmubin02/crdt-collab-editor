@@ -1,7 +1,7 @@
 import { ROOT, type DocSnapshot, type Op } from '@collab/crdt';
 import pg from 'pg';
 import { buildSnapshot } from './snapshot-builder.ts';
-import type { CompactResult, DocStore, StoredDoc } from './store.ts';
+import type { CompactResult, DocStore, OpsPage, StoredDoc } from './store.ts';
 
 /**
  * Schema. One row per op, with the character stored as an integer UTF-16 code unit: an element
@@ -77,9 +77,14 @@ export class PostgresStore implements DocStore {
         [docId],
       );
       const row = snap.rows[0];
-      const ops = await this.#opsAfter(client, docId, row?.upto_id ?? '0');
+      const upto = row?.upto_id ?? '0';
+      const ops = await this.#opsAfter(client, docId, upto);
       await client.query('COMMIT');
-      return { snapshot: row ? (JSON.parse(row.data) as DocSnapshot) : null, ops: ops.map(toOp) };
+      return {
+        snapshot: row ? (JSON.parse(row.data) as DocSnapshot) : null,
+        ops: ops.map(toOp),
+        cursor: ops.at(-1)?.id ?? upto,
+      };
     } catch (e) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw e;
@@ -190,10 +195,13 @@ export class PostgresStore implements DocStore {
     }
   }
 
-  /** Ops of `docId` with id > `afterId`, in id order, with their ids (for Redis gap repair). */
-  async opsAfterId(docId: string, afterId: string): Promise<{ ops: Op[]; lastId: string }> {
-    const rows = await this.#opsAfter(this.#pool, docId, afterId);
-    return { ops: rows.map(toOp), lastId: rows.at(-1)?.id ?? afterId };
+  /**
+   * Ops with id > `cursor`. Exact by the commit-order invariant: no op can later commit with an
+   * id below a cursor we have already returned.
+   */
+  async opsAfter(docId: string, cursor: string): Promise<OpsPage> {
+    const rows = await this.#opsAfter(this.#pool, docId, cursor);
+    return { ops: rows.map(toOp), cursor: rows.at(-1)?.id ?? cursor };
   }
 
   async close(): Promise<void> {

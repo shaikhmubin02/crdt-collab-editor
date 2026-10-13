@@ -1,6 +1,6 @@
 import type { DocSnapshot, Op } from '@collab/crdt';
 import { buildSnapshot } from './snapshot-builder.ts';
-import type { CompactResult, DocStore, StoredDoc } from './store.ts';
+import type { CompactResult, DocStore, OpsPage, StoredDoc } from './store.ts';
 
 interface MemoryDoc {
   /** Ops in commit order; index + 1 plays the role of the Postgres row id. */
@@ -18,9 +18,19 @@ export class MemoryStore implements DocStore {
   async load(docId: string): Promise<StoredDoc> {
     await Promise.resolve();
     const doc = this.#docs.get(docId);
-    if (!doc) return { snapshot: null, ops: [] };
+    if (!doc) return { snapshot: null, ops: [], cursor: '0' };
     const upto = doc.snapshot?.upto ?? 0;
-    return { snapshot: doc.snapshot?.data ?? null, ops: doc.ops.slice(upto) };
+    return {
+      snapshot: doc.snapshot?.data ?? null,
+      ops: doc.ops.slice(upto),
+      cursor: String(doc.ops.length),
+    };
+  }
+
+  async opsAfter(docId: string, cursor: string): Promise<OpsPage> {
+    await Promise.resolve();
+    const ops = this.#docs.get(docId)?.ops ?? [];
+    return { ops: ops.slice(Number(cursor)), cursor: String(ops.length) };
   }
 
   async append(docId: string, ops: readonly Op[]): Promise<void> {

@@ -105,6 +105,7 @@ function sanitize(message: FanoutMessage): FanoutMessage {
       if (!isReplicaId(message.replica)) throw new Error('bad replica');
       return message;
     case 'presence':
+    case 'who':
       return message;
   }
 }

@@ -24,6 +24,8 @@ export interface ServerOptions {
   readonly log?: Logger;
   readonly metrics?: Metrics;
   readonly snapshotEvery?: number;
+  /** Storage catch-up poll interval; defaults to 2000 ms when a fanout is configured, else off. */
+  readonly catchUpMs?: number | null;
   /** Keep a room loaded this long after its last client leaves. */
   readonly roomIdleMs?: number;
   readonly helloTimeoutMs?: number;
@@ -67,6 +69,7 @@ export async function startServer(options: ServerOptions): Promise<SyncServer> {
     log,
     snapshotEvery: options.snapshotEvery ?? 1000,
     fanout: options.fanout ?? null,
+    catchUpMs: options.catchUpMs !== undefined ? options.catchUpMs : options.fanout ? 2000 : null,
     onFailed: (room: Room) => rooms.delete(room.id),
   };
 
