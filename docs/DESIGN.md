@@ -151,9 +151,85 @@ result is garbage. How RGA behaves depends on the direction of typing:
   `known RGA limitation: text typed backwards ... can interleave` pins down this exact output.
   YATA and Fugue handle this better; this project accepts it as a known limitation.
 
-## 4. Tombstones and garbage collection
+## 4. Representation, tombstones and garbage collection
 
-_Milestone 3 / 5. To be written with the measured memory-per-character numbers._
+### From the naive model to runs
+
+The first implementation, kept as `test/reference/naive-doc.ts`, stored one object per character
+in a flat array. That made every op O(n):
+
+- `indexOf` to find the origin;
+- a scan over the array to map a visible index to an element;
+- a `splice` to insert.
+
+Replaying the 260K-op `automerge-paper` trace took about 61 s and retained 269 bytes per inserted
+character.
+
+The shipped `Doc` keeps the same algorithm over a different representation:
+
+- **Runs.** A run is a maximal chain of characters typed one after another by one replica.
+  Character _k_ has ID `(clock + k, replica)`, seq `seq + k`, and origin character _k − 1_.
+  - A local or remote insert whose origin is the last character of a run, and whose clock and seq
+    continue that run, appends to the run's string.
+  - A delete splits a run around the deleted character. Runs re-merge when their neighbours share
+    the tombstone flag again.
+  - On `automerge-paper`, 182,315 inserted characters become 12,490 runs.
+- **Blocks.** Runs sit in a doubly linked list of blocks holding up to 128 runs each. Every block
+  caches its visible length, so mapping a visible index skips whole blocks.
+- **Per-replica index.** Each replica's runs are kept in an array sorted by clock, and their clock
+  ranges are disjoint, so finding an element by ID is a binary search.
+- **The integrate rule works on whole runs.** IDs increase along a run, so if a run's first
+  character is newer than the incoming element, all of it is, and the RGA skip loop can skip it
+  in one step. The one special case is an origin in the middle of a run: the next element is then
+  the next character of that run, and if it is older, the run is split there.
+
+### The document is the op log
+
+There is no array of op objects:
+
+- **Inserts** are reconstructed from runs.
+- **Deletes** are kept as run-length-encoded records. A record holds consecutive clocks and seqs
+  from one replica whose targets step through consecutive clocks (+1 for forward delete, −1 for
+  backspace). 77,463 deletes become 7,334 records.
+- **`opsSince(vv)`** rebuilds exactly the original ops and sorts them by ID. That order is causal,
+  because every op's clock exceeds the clocks of everything it depends on, so a receiver never
+  has to buffer them.
+- **Snapshots** therefore contain the full history (792 KB of JSON for `automerge-paper`). A
+  replica restored from one can still serve any peer.
+
+A differential property test (`differential.property.test.ts`) runs the optimized `Doc` and the
+naive reference side by side on the same random scenarios. It requires identical text, version
+vectors, buffered-op counts and `opsSince` output at every step.
+
+### Tombstones
+
+Deleted characters stay in the sequence because concurrent and future ops may reference them:
+
+- an insert whose origin was concurrently deleted must still find its place;
+- a delete that arrives late must still find its target.
+
+This is inherent to the design, and tombstones are why memory is measured per _inserted_ character
+(26 B) as well as per _visible_ character (45 B on `automerge-paper`, 136 B on the delete-heavy
+`seph-blog1`). In the run representation a tombstone costs nothing extra beyond the run boundaries
+it creates. Deleted text is kept so that inserts can still be served to peers that never saw them.
+
+### Garbage collection (not implemented)
+
+A tombstone could be discarded once it is **causally stable**: every replica that will ever send
+an op has already seen the delete, so nobody can reference the element again. Detecting that
+requires knowing the version vector of every replica that might still be offline with unsynced
+edits. In an offline-first system that set is unbounded; a laptop can reappear after a month.
+
+Two practical options exist:
+
+- **Epoch-based compaction.** The server declares a cut-off. Clients older than the epoch must
+  discard local state and reload, and their unsynced ops are rebased as plain text inserts.
+- **Server-side GC with stubs, as Yjs does.** Deleted content is dropped but a placeholder keeps
+  the IDs, so the structure stays valid.
+
+Both trade a rare, user-visible failure mode for bounded growth. At the measured cost of tens of
+bytes per character ever typed, a 1M-keystroke document stays in the tens of megabytes, so this
+project accepts unbounded tombstones and documents the trade-off.
 
 ## 5. Snapshots
 

@@ -1,0 +1,63 @@
+{
+  "impl": "optimized",
+  "date": "2026-10-13T00:05:30.901Z",
+  "machine": {
+    "cpu": "11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+    "logicalCores": 4,
+    "memoryGiB": 7.8,
+    "os": "Windows_NT 10.0.26300",
+    "node": "v26.8.1"
+  },
+  "results": {
+    "append 100000 chars": {
+      "ms": 25.75,
+      "opsPerSec": 3882771
+    },
+    "random insert 100000 chars": {
+      "ms": 357.49,
+      "opsPerSec": 279730
+    },
+    "automerge-paper: local replay": {
+      "patches": 259778,
+      "ops": 259778,
+      "ms": 1049.99,
+      "opsPerSec": 247410
+    },
+    "automerge-paper: remote integrate": {
+      "ops": 259778,
+      "ms": 1612.3,
+      "opsPerSec": 161123
+    },
+    "automerge-paper: memory": {
+      "retainedMiB": 4.53,
+      "insertedChars": 182315,
+      "visibleChars": 104852,
+      "bytesPerInsertedChar": 26.07,
+      "bytesPerVisibleChar": 45.32
+    },
+    "automerge-paper: toString": {
+      "ms": 1.42
+    },
+    "seph-blog1: local replay": {
+      "patches": 137993,
+      "ops": 368209,
+      "ms": 707.97,
+      "opsPerSec": 520094
+    },
+    "seph-blog1: remote integrate": {
+      "ops": 368209,
+      "ms": 1293.35,
+      "opsPerSec": 284694
+    },
+    "seph-blog1: memory": {
+      "retainedMiB": 7.38,
+      "insertedChars": 212489,
+      "visibleChars": 56769,
+      "bytesPerInsertedChar": 36.41,
+      "bytesPerVisibleChar": 136.3
+    },
+    "seph-blog1: toString": {
+      "ms": 5.86
+    }
+  }
+}

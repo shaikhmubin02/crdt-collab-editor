@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { expect } from 'vitest';
 import { Doc } from '../../src/doc.ts';
 import type { Op } from '../../src/ops.ts';
+import type { VersionVector } from '../../src/version-vector.ts';
 
 /**
  * Random concurrent-editing scenarios.
@@ -60,17 +61,31 @@ export const scenario = fc.record({
   }),
 });
 
-export interface Outcome {
-  docs: Doc[];
+/** The surface shared by the optimized Doc and the naive reference implementation. */
+export interface TextCrdt {
+  readonly length: number;
+  insert(index: number, text: string): Op[];
+  delete(index: number, count: number): Op[];
+  apply(op: Op): Op[];
+  applyAll(ops: Iterable<Op>): Op[];
+  opsSince(vv: VersionVector): Op[];
+  versionVector(): VersionVector;
+  readonly pendingCount: number;
+  toString(): string;
+}
+
+export interface Outcome<D extends TextCrdt = Doc> {
+  docs: D[];
   sent: Op[];
 }
 
-export function play(
+export function play<D extends TextCrdt = Doc>(
   replicaCount: number,
   steps: readonly Step[],
   finalOrderSeeds: readonly (readonly number[])[],
-): Outcome {
-  const docs = Array.from({ length: replicaCount }, (_, i) => new Doc(`r${String(i)}`));
+  make: (replica: string) => D = (replica) => new Doc(replica) as unknown as D,
+): Outcome<D> {
+  const docs = Array.from({ length: replicaCount }, (_, i) => make(`r${String(i)}`));
   const sent: Op[] = [];
   const doc = (i: number) => docs[i % replicaCount]!;
 
