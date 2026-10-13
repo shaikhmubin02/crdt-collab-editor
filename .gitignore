@@ -14,3 +14,8 @@ bench/traces/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# Local-only interview prep (never committed)
+docs/INTERVIEW_NOTES.md
+*INTERVIEW*.md
+*interview*

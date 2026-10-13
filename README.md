@@ -22,13 +22,13 @@ a Node.js WebSocket sync server, offline editing, and PostgreSQL persistence.
 
 ## Repository layout
 
-| Path                | What                                                                       |
-| ------------------- | -------------------------------------------------------------------------- |
-| `packages/crdt`     | The CRDT: zero dependencies, pure and deterministic                        |
-| `packages/protocol` | Wire protocol messages and validation                                      |
-| `apps/server`       | WebSocket sync server (Postgres op log + snapshots, Redis fan-out)         |
-| `bench/`            | Benchmark scripts and recorded results                                     |
-| `docs/`             | [DESIGN.md](docs/DESIGN.md) |
+| Path                | What                                                               |
+| ------------------- | ------------------------------------------------------------------ |
+| `packages/crdt`     | The CRDT: zero dependencies, pure and deterministic                |
+| `packages/protocol` | Wire protocol messages and validation                              |
+| `apps/server`       | WebSocket sync server (Postgres op log + snapshots, Redis fan-out) |
+| `bench/`            | Benchmark scripts and recorded results                             |
+| `docs/`             | [DESIGN.md](docs/DESIGN.md)                                        |
 
 ## Design decisions
 
